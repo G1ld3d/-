@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- add inside <head> -->
+<link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>His Book</title>
+  <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/1/1954.png" type="image/png">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #000;               /* Solid black background */
+      font-family: 'Courier New', Courier, monospace;
+      color: #2c1b0f;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100vh;
+      position: relative;
+      overflow: hidden; /* Allow other effects to fill */
+    }
+
+    h1 {
+      position: absolute;
+      left: 40px;
+      top: 40px;
+      color: #000000;
+      font-size: 2em;
+    }
+
+    .container {
+      position: relative;
+      width: 1000px;
+      height: 600px;
+      background: #c2b888e9;
+      box-shadow: 0 0 30px rgba(0, 0, 0, 0.2);
+      border: 3px solid #333332a2;
+      display: flex;
+      margin-top: 90px;
+      z-index: 1;
+    }
+
+    .page {
+      flex: 1;
+      padding: 40px 30px;
+      overflow-y: auto;
+      transition: transform 0.8s ease, opacity 0.8s ease;
+      backface-visibility: hidden;
+      font-family: 'Patrick Hand', cursive;
+      font-size: 23px;     
+}
+
+
+    .page-flip-next {
+      transform: rotateY(-15deg);
+      opacity: 0;
+    }
+
+    .page-flip-prev {
+      transform: rotateY(15deg);
+      opacity: 0;
+    }
+
+    .page p {
+      margin: 0;
+      line-height: 1.6;
+    }
+
+    .divider {
+      width: 2px;
+      background-color: black;
+    }
+
+    .page-nav {
+      position: absolute;
+      top: 50%;
+      left: 0;
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      padding: 0 40px;                /* adjust side‑margins as you like */
+      transform: translateY(-50%);    /* nudge it up by half its height */
+    }
+
+    .page-nav button {
+      /* make them taller: */
+      padding: 100px 1px;      /* 20px top/bottom, 30px left/right */
+      /* or, if you want a fixed height: */
+      /* height: 60px; */
+      line-height: 1;          /* reset line-height so text stays vertically centered */
+    }
+
+    .page-nav button:hover {
+      background-color: #959492a3;
+    }
+
+    .page-nav button:last-child {
+      margin-right: 80px;
+    }
+
+    .page-jump {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: white;
+      padding: 10px;
+      border-radius: 6px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+      text-align: center;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      z-index: 10;
+    }
+
+    .page-jump input {
+      padding: 6px;
+      width: 80px;
+      font-family: inherit;
+      text-align: center;
+    }
+
+    .page-jump button {
+      padding: 6px 16px;
+      background-color: #3333339c;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .page-jump button:hover {
+      background-color: #a7a7a7;
+    }
+
+    .error {
+      position: absolute;
+      bottom: -30px;
+      color: red;
+      width: 100%;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <audio id="bgMusic" src="Assets/Audios/kmsg.mp3" loop preload="auto"></audio>
+  <audio id="noiseMusic" src="Assets/Audios/whiteNoise.mp3" loop preload="auto"></audio>
+
+  <audio id="passPage" preload="auto">
+    <source src="Assets/Audios/pass_page.wav" type="audio/wav" />
+    <source src="pass_page.mp3" type="audio/mpeg" />
+  </audio>
+
+  <div class="container">
+    <div class="page" id="left-page"></div>
+    <div class="divider"></div>
+    <div class="page" id="right-page"></div>
+    <div id="error-message" class="error"></div>
+  </div>
+
+  <!-- moved OUTSIDE of .container -->
+  <div class="page-nav">
+    <button onclick="prevPage()"><</button>
+    <button onclick="nextPage()">></button>
+  </div>
+
+  <div class="page-jump">
+    <input type="text" id="pageNumber" placeholder="Page #" />
+    <button onclick="goToPage()">Go</button>
+  </div>
+
+  <script>
+    const page_SFX = document.getElementById("passPage");
+    const bgMusic = document.getElementById("bgMusic");
+    let currentPageIndex = 0;
+
+  const pages = [
+      `<div style="color: black;">
+        <p><strong>Note to remember</strong><br><br>Mom & Von Josh Vescari:<br>"Knowing too much in this world is not a privilege, but a great sin"</p> 
+        <img src="Assets/Images/VescariFu.png" alt="Note Illustration" style="margin-top: 10px; max-width: 90%; height: auto;" />
+      </div>`,
+      `<div style="color: black;">
+        <p><strong>Avengers</strong><br><br>A person who exacts punishment or inflicts harm in return for an injury or wrong.</p>
+      </div>`,
+      `<div style="color: black;">
+        <p><strong>Weird Weapon Sketch</strong>
+        <img src="Assets/Images/Azkereth.png" alt="Note Illustration" style="margin-top: 10px; max-width: 90%; height: auto;" />
+      </div>`,
+      `<div style="color: black;">
+        <p><strong>I swear it wasn't on purpose</strong><br><br>I still have no idea how I stumbled upon all of this mess. It was an honest mistake.
+          <br>I tried talking to her, but all she told me was to run. I stumbled upon with her again a few days ago, I told her I still had the plans
+          but, I really didn't I just wanted to see what could've change. I wonder what would've happened if I didn't went to those tunnels. She told me
+          that was part of the problem, seeing that room and that thing... It had a really strong reaction seeing me.</p>
+      </div>`,
+      `<div style="color: black;">
+        <p><strong>Patrol</strong><br><br>After joining this group of "adventurers", we were going to another island, the guards stopped me. I thought it 
+          it was finally over. My diguse did not work. But the guard really let me off the hook. They did not recognize me. I think this has been the first
+          and up until now last experience being caught. I wonder, if this guard had a suspicion on me. Why haven't more people have? Are they playing dumb 
+          or is my diguse elite tier (I like to think that). Maybe that's the reason the man Vescari said, I think it was Scorch, hasn't found me. I do not 
+          think I have seen this person before. When I read one of Vanilla Unicorn's letter, it said something about him being in a mission. Maybe he is still
+          in that mission.</p>
+      </div>`,
+      `<div style="color: black;">
+        <p><strong>Lucky Hoard Palace</strong><br><br>This place was completly amazing, the casino vibe was amazing. But I'm assumming this is Vescari's base.
+          This is where I heard them talk about hunting me down...and-. I don't know. How to keep going. After witnessing. How is this supposed to help me relief
+          stress, I'm being flooded with all this trauma. I don't wanna ever go back. And if I am it's to rip out Vescari's organs out and destroy his whole operation. 
+          It's the only thing keeping me going. I want to taunt him to death. There isn't much I can do, I'm weak. Forming a team of Avengers, was something I thought of.
+          Maybe this group of adventurers are going to help me form the avengers.</p>
+      </div>`,
+      `<div style="color: black;">
+        <p><strong>Alienation</strong><br><br>This group of adventuerers, are really strong compared with me. It makes me think I'm just someone with a petty revenge plot 
+          and dismantle an operation with a fork. I feel so. Out of place. I don't seem to connect with nobody. Everyone is doing something for a greater mission, and I'm 
+          just here. Doing my own thing. Which I don't how to feel about this. I don't want to get attached with nobody. Everyone who I get attached to something happens to them.
+          If I just move my pieces just right, I can in a way use them to help me defeat. It dosen't even feel right, using them. </p>
+      </div>`,
+      `<div style="color: black;">
+        <p><strong>A friend called Rivenette</strong><br><br>This guy. Rivenette I believe that is his name. This dude helped me get me some pretty awesome daggers. And 
+          had some pretty deep talks about Vescari. I think he also wants to kill him too. He is a really great candidate for the Avengers. He gets 7 friendship points out of 10. 
+          Really cool schizophrenic friend.</p>
+            <img src="Assets/Images/Rivenette.png" alt="Note Illustration" style="margin-top: 10px; max-width: 90%; height: auto;" />
+      </div>`,
+        `<div style="color: black;">
+            <img src="Assets/Images/AnalisisLetters.png" alt="Note Illustration" style="margin-top: 30px; max-width: 100%; height: auto;" />
+      </div>`,
+      `<div style="color: black;">
+        <p><strong>Letter Thing</strong><br><br>After doing some eavesdropping—and by eavesdropping, I mean reading someone else’s mail (which has to be illegal)—I picked up on a
+           little pattern and learned about some of the missions they were working on. One of the letters mentioned they were hunting someone down in the name of peace, 
+           for some odd reason. Apparently, it was something pretty big for this group, since they brought in someone pretty tough to help them. Huh. Writing this down makes me think. Yeah… no, 
+           probably overthinking it.</p>
+      </div>`,
+    `<div style="color: black;">
+    <p><strong>Puzzle Page</strong><br><br>Something feels off here...<br><br>
+    <button onclick="showWheel()" style="padding: 10px 20px; font-family: inherit;">Touch the center of the page</button>
+    <div id="wheelContainer" style="display:none; margin-top: 30px; text-align: center;">
+      <canvas id="wheelCanvas" width="300" height="300" style="background:#222; border-radius: 50%;"></canvas><br>
+      <button onclick="checkWheel()" style="margin-top: 10px; padding: 6px 16px;">Check Word</button>
+      <p id="wheelResult" style="margin-top: 15px; font-weight: bold;"></p>
+    </div>
+  </div>`
+    ];
+
+    function animatePageFlip(direction, callback) {
+      const leftPage = document.getElementById("left-page");
+      const rightPage = document.getElementById("right-page");
+      leftPage.classList.add(direction === "next" ? "page-flip-next" : "page-flip-prev");
+      rightPage.classList.add(direction === "next" ? "page-flip-next" : "page-flip-prev");
+      setTimeout(() => {
+        leftPage.classList.remove("page-flip-next", "page-flip-prev");
+        rightPage.classList.remove("page-flip-next", "page-flip-prev");
+        callback();
+      }, 400);
+    }
+
+    function updatePages() {
+      document.getElementById("left-page").innerHTML = pages[currentPageIndex] || "";
+      document.getElementById("right-page").innerHTML = pages[currentPageIndex + 1] || "";
+      document.getElementById("error-message").textContent = "";
+      page_SFX.currentTime = 0;
+      page_SFX.play().catch(() => {});
+    }
+
+    function nextPage() {
+      if (currentPageIndex + 2 < pages.length) {
+        animatePageFlip("next", () => {
+          currentPageIndex += 2;
+          updatePages();
+        });
+      }
+    }
+
+    function prevPage() {
+      if (currentPageIndex - 2 >= 0) {
+        animatePageFlip("prev", () => {
+          currentPageIndex -= 2;
+          updatePages();
+        });
+      }
+    }
+
+    function goToPage() {
+      const input = document.getElementById("pageNumber").value;
+      if (input === "W.H") {
+        document.body.style.background = "black";
+        document.getElementById("left-page").innerHTML = `<p style="color:white; text-align:center;">Welcome Home...</p>`;
+        document.getElementById("right-page").innerHTML = "";
+        bgMusic.play().catch(() => {});
+        document.querySelector(".page-nav").style.display = "none";
+        document.querySelector(".page-jump").style.display = "none";
+      } else {
+        const pageNum = parseInt(input);
+        if (!isNaN(pageNum) && pageNum >= 1 && pageNum <= pages.length) {
+          currentPageIndex = (pageNum - 1) - ((pageNum - 1) % 2);
+          updatePages();
+        } else {
+          document.getElementById("error-message").textContent = "Invalid page number.";
+        }
+      }
+    }
+
+    window.addEventListener("load", () => {
+      const bgNoise = document.getElementById("noiseMusic");
+      bgNoise.volume = 0.2;
+      bgNoise.play().catch(() => {});
+      updatePages();
+    });
+  </script>
+</body>
+</html>

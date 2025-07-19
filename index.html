@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Cover Cipher</title>
+    <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/1/1954.png" type="image/png">
+  <style>
+    #loading-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background-color: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ffff;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 1.5em;
+      z-index: 10000;
+    }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: linear-gradient(135deg,#2d1e2f,#3b2d3f,#4b3832,#5b4636,#6b5340);
+      background-size:400% 400%;
+      animation: magicGradient 20s ease infinite;
+    }
+    @keyframes magicGradient {
+      0%   { background-position:   0% 50%; }
+      50%  { background-position: 100% 50%; }
+      100% { background-position:   0% 50%; }
+    }
+    #book-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 10;
+    }
+    #whiteout-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background-color: white;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    /* --- NEW: Style for the final quote --- */
+    #final-quote {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-family: 'Times New Roman', Times, serif;
+      font-size: 2em;
+      color: #333;
+      width: 80%;
+      max-width: 600px;
+      text-align: center;
+      opacity: 0;
+      transition: opacity 4s ease-in;
+      z-index: 10000;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="loading-screen">Loading...</div>
+  <div id="whiteout-overlay"></div>
+
+  <p id="final-quote">
+    Knowing too much in this world is not a privilege, but a great sin.
+
+
+
+
+    Come back in a few days...
+  </p>
+
+  <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+    const loadingScreen   = document.getElementById('loading-screen');
+    const whiteoutOverlay = document.getElementById('whiteout-overlay');
+    const finalQuote      = document.getElementById('final-quote');
+
+    // Audio setup
+    const listener    = new THREE.AudioListener();
+    const bgMusic     = new THREE.Audio(listener);
+    const noiseMusic  = new THREE.Audio(listener);
+    const audioLoader = new THREE.AudioLoader();
+
+    let audioLoadedCount = 0;
+    const handleAudioLoaded = () => {
+      audioLoadedCount++;
+      if (audioLoadedCount >= 3) { 
+        loadingScreen.style.display = 'none';
+        bgMusic.play();
+        noiseMusic.play();
+      }
+    };
+
+    // Load background music
+    audioLoader.load(
+      'Assets/Audios/cover1.mp3',
+      buffer => {
+        bgMusic.setBuffer(buffer);
+        bgMusic.setLoop(true);
+        bgMusic.setVolume(0.3);
+        handleAudioLoaded();
+      },
+      undefined,
+      err => {
+        console.warn('bgMusic load failed, unblocking loader', err);
+        handleAudioLoaded();
+      }
+    );
+
+    // Load noise track
+    audioLoader.load(
+      'Assets/Audios/whiteNoise.mp3',
+      buffer => {
+        noiseMusic.setBuffer(buffer);
+        noiseMusic.setLoop(true);
+        noiseMusic.setVolume(0.2);
+        handleAudioLoaded();
+      },
+      undefined,
+      err => {
+        console.warn('noiseMusic load failed, unblocking loader', err);
+        handleAudioLoaded();
+      }
+    );
+
+    // Three.js scene setup
+    const scene    = new THREE.Scene();
+    const camera   = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 1000);
+    camera.position.set(2,2.5,4.5);
+    camera.add(listener);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.shadowMap.enabled    = true;
+    renderer.toneMapping          = THREE.ACESFilmicToneMapping;
+    renderer.outputColorSpace     = THREE.SRGBColorSpace;
+    renderer.toneMappingExposure  = 1.1;
+    renderer.domElement.id        = 'book-canvas';
+    document.body.appendChild(renderer.domElement);
+
+    const clock    = new THREE.Clock();
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.target.set(0,0,0);
+
+    const gravity  = new THREE.Vector3(0, -9.8, 0);
+
+    // Lighting
+    const ambient   = new THREE.AmbientLight(0xffffff, 0.05);
+    const dirLight  = new THREE.DirectionalLight(0xfff2d6, 0.8);
+    dirLight.castShadow = true;
+    dirLight.position.set(3,5,3);
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.1);
+    const backLight = new THREE.DirectionalLight(0xffffff, 0.2);
+    backLight.position.set(-3,2,-1);
+    scene.add(ambient, dirLight, hemiLight, backLight);
+
+    // Texture loading
+    const tl = new THREE.TextureLoader();
+    tl.crossOrigin = 'anonymous';
+    const leatherColor  = tl.load('Assets/Textures/Leather033_1K_Color.jpg');
+    const leatherNormal = tl.load('Assets/Textures/Leather033_1K_Color.jpg');
+    const leatherRough  = tl.load('Assets/Textures/Leather033_1K_Roughness.jpg');
+    const paperColor    = tl.load('Assets/Textures/Paper005_1K_Color.jpg');
+    const paperNormal   = tl.load('Assets/Textures/Paper005_2K_Color.jpg');
+    leatherColor.colorSpace = THREE.SRGBColorSpace;
+    paperColor.colorSpace   = THREE.SRGBColorSpace;
+
+    // Materials
+    const coverMat = new THREE.MeshStandardMaterial({ map: leatherColor, normalMap: leatherNormal, roughnessMap: leatherRough });
+    const pageMat  = new THREE.MeshStandardMaterial({ map: paperColor, normalMap: paperNormal, roughness: 0.9 });
+    const metalMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 1.0, roughness: 0.2 });
+
+    // Book group
+    const bookGroup = new THREE.Group();
+    scene.add(bookGroup);
+
+    // Book mesh
+    const bookMesh = new THREE.Mesh(
+      new RoundedBoxGeometry(2,2.6,0.8,10,0.1),
+      [ pageMat, coverMat, pageMat, pageMat, coverMat, coverMat ]
+    );
+    bookMesh.castShadow   = true;
+    bookMesh.receiveShadow = true;
+    bookGroup.add(bookMesh);
+
+    // Back text
+    function createTextCanvasTexture(text, fontSize=32, width=512, height=128) {
+      const canvas  = document.createElement('canvas');
+      const ctx     = canvas.getContext('2d');
+      canvas.width  = width;
+      canvas.height = height;
+      ctx.font      = `bold ${fontSize}px serif`;
+      ctx.fillStyle = 'rgba(212,175,55,0.6)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, width/2, height/2);
+      return new THREE.CanvasTexture(canvas);
+    }
+
+    const backTextTexture = createTextCanvasTexture('VPM');
+    const backTextMat     = new THREE.MeshStandardMaterial({ map: backTextTexture, transparent: true, roughness: 0.5, metalness: 0.5, opacity: 0.3 });
+    const backTextMesh    = new THREE.Mesh(new THREE.PlaneGeometry(1.5,0.375), backTextMat);
+    backTextMesh.position.set(0, -0.8, -0.41);
+    backTextMesh.rotation.y = Math.PI;
+    backTextMesh.visible    = false;
+    bookGroup.add(backTextMesh);
+
+    // Strap and corners
+    const strap = new THREE.Mesh(new RoundedBoxGeometry(2.05,0.5,0.85,4,0.05), metalMat);
+    strap.position.y = 0.4;
+    strap.castShadow = true;
+    bookGroup.add(strap);
+
+    const cornerMeshes = [];
+    const cornerGeo    = new THREE.BoxGeometry(0.3,0.3,0.02);
+    [ {x:0.85,y:1.15},{x:-0.85,y:1.15},{x:0.85,y:-1.15},{x:-0.85,y:-1.15} ]
+      .forEach(({x,y}) => {
+        const corner = new THREE.Mesh(cornerGeo, metalMat);
+        corner.position.set(x,y,0.41);
+        corner.castShadow = true;
+        bookGroup.add(corner);
+        cornerMeshes.push(corner);
+      });
+    const goldPieces = [strap, ...cornerMeshes];
+
+    // Glyphs
+    const glyphTextures = [
+      tl.load('Assets/Glyphs/glyph1.png'), tl.load('Assets/Glyphs/glyph2.png'), tl.load('Assets/Glyphs/glyph3.png'),
+      tl.load('Assets/Glyphs/glyph4.png'), tl.load('Assets/Glyphs/glyph5.png'), tl.load('Assets/Glyphs/glyph11.png'),
+      tl.load('Assets/Glyphs/glyph6.png'), tl.load('Assets/Glyphs/glyph7.png'), tl.load('Assets/Glyphs/glyph8.png'),
+      tl.load('Assets/Glyphs/glyph9.png'), tl.load('Assets/Glyphs/glyph10.png')
+    ];
+    const gGlyphTextures = [];
+    for (let i = 1; i <= 11; i++) {
+        gGlyphTextures.push(tl.load(`Assets/Glyphs/g${i}.png`));
+    }
+
+    const codeString   = "tGNhR7_pnO0";
+    const glyphSymbols = ['🔥','👁️','🌀','🕯️','🧩','🦴','🐍','🌕','💀','✨','🗝️'];
+
+    const glyphsGroup = new THREE.Group();
+    scene.add(glyphsGroup);
+    const randomGlyphsGroup = new THREE.Group();
+    scene.add(randomGlyphsGroup);
+    const radius = 2.5;
+    const center = new THREE.Vector3(0,0,0); 
+
+    for (let i = 0; i < codeString.length; i++) {
+      const angle      = (i / codeString.length) * Math.PI * 2;
+      const x          = Math.cos(angle) * radius;
+      const y          = 0.3 * Math.sin(angle * 2);
+      const z          = Math.sin(angle) * radius;
+      const tex        = glyphTextures[i];
+      
+      // --- MODIFIED: Conditionally set the material for the red glyph ---
+      let mat;
+      // The 11th glyph (index 10) corresponds to glyph10.png
+      if (i === 10) {
+        mat = new THREE.MeshBasicMaterial({ 
+            map: tex, 
+            color: 0xff0000, // Red color tint
+            transparent: true, 
+            opacity: 0, 
+            blending: THREE.AdditiveBlending, 
+            depthWrite: false 
+        });
+      } else {
+        mat = new THREE.MeshBasicMaterial({ 
+            map: tex, 
+            color: 0xffe48a, // Default gold color
+            transparent: true, 
+            opacity: 0, 
+            blending: THREE.AdditiveBlending, 
+            depthWrite: false 
+        });
+      }
+
+      const glyphMesh  = new THREE.Mesh(new THREE.PlaneGeometry(0.4,0.4), mat);
+      glyphMesh.position.set(x,y,z);
+      glyphMesh.lookAt(center);
+      glyphMesh.userData.char = codeString[i];
+      glyphMesh.userData.symbol = glyphSymbols[i];
+      if (i === 0) glyphMesh.userData.isClickableLight = true;
+      glyphsGroup.add(glyphMesh);
+    }
+
+    // Ground
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(20,20), new THREE.ShadowMaterial({opacity:0.3}));
+    ground.rotation.x = -Math.PI/2;
+    ground.position.y = -1.5;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // --- Game State Variables ---
+    let musicFading = false;
+    let magic = false;
+    let glyphsAccelerating = false;
+    let fadeToWhiteActive = false;
+    let bookLaunching = false;
+    let isFinaleTriggered = false;
+    let puzzleTwoActive = false;
+    let finalPuzzleActive = false; 
+
+    const konamiCode = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','a','b'];
+    const whiteoutCode = ['4','0','0','0'];
+    const unlockCode = 'weodw4-rms8'; 
+    let seq = [];
+    let numSeq = [];
+    let finalCodeSeq = []; 
+    let bookRotationVelocity = 0.2;
+    let glyphsRotationVelocity = -0.4;
+    let randomGlyphsRotationVelocity = 1.5;
+    const flyingGlyphs = [];
+
+    // --- Simon Says Puzzle State ---
+    let simonSequence = [];
+    let playerSequenceIndex = 0;
+    let isSimonTurn = false;
+    const SIMON_ROUNDS_TO_WIN = 10;
+
+    // --- Audio Objects ---
+    const magicMusic = new THREE.Audio(listener);
+    const finalMusic = new THREE.Audio(listener);
+    const breakSfx = new THREE.PositionalAudio(listener);
+    const whiteoutSfx = new THREE.Audio(listener);
+    const sfx = new THREE.PositionalAudio(listener);
+    const lightUpSfx = new THREE.PositionalAudio(listener);
+    
+    bookGroup.add(sfx);
+    bookGroup.add(breakSfx);
+    camera.add(whiteoutSfx);
+    bookGroup.add(lightUpSfx);
+
+    audioLoader.load('Assets/Audios/cover2.mp3', buf => { magicMusic.setBuffer(buf); magicMusic.setLoop(true); magicMusic.setVolume(0); });
+    audioLoader.load('Assets/Audios/breaking_sfx.mp3', buf => { breakSfx.setBuffer(buf); breakSfx.setRefDistance(20); breakSfx.setVolume(0.8); });
+    audioLoader.load('Assets/Audios/whiteoutSfx.mp3', buf => { whiteoutSfx.setBuffer(buf); whiteoutSfx.setVolume(0.7); });
+    audioLoader.load('Assets/Audios/MagicSFX.mp3', buf => { sfx.setBuffer(buf); sfx.setRefDistance(20); });
+    audioLoader.load('Assets/Audios/20SFX.wav', buf => { lightUpSfx.setBuffer(buf); lightUpSfx.setRefDistance(15); lightUpSfx.setVolume(0.9); });
+    
+    audioLoader.load(
+      'Assets/Audios/cover3.mp3', 
+      buffer => {
+        finalMusic.setBuffer(buffer);
+        finalMusic.setLoop(true);
+        finalMusic.setVolume(0.5);
+        handleAudioLoaded();
+      },
+      undefined,
+      err => {
+        console.warn('finalMusic load failed, unblocking loader', err);
+        handleAudioLoaded();
+      }
+    );
+
+    window.addEventListener('keydown', e => {
+      if (listener.context.state === 'suspended') listener.context.resume();
+      
+      // --- Normal Puzzle Logic ---
+      if (!magic) {
+        seq.push(e.key);
+        if (seq.length > konamiCode.length) seq.shift();
+        if (seq.join('') === konamiCode.join('')) {
+          magic = true;
+          musicFading = true;
+          metalMat.emissive = new THREE.Color(0xffd700);
+          metalMat.emissiveIntensity = 0.5;
+          if (sfx.buffer && !sfx.isPlaying) sfx.play();
+          if (magicMusic.buffer) magicMusic.play();
+        }
+      }
+
+      if (magic && !finalPuzzleActive && !glyphsAccelerating && !puzzleTwoActive) {
+        numSeq.push(e.key);
+        if (numSeq.length > whiteoutCode.length) numSeq.shift();
+        if (numSeq.join('') === whiteoutCode.join('')) {
+          numSeq = [];
+          startSimonGame();
+        }
+      }
+
+      if (finalPuzzleActive) {
+        finalCodeSeq.push(e.key);
+        if (finalCodeSeq.length > unlockCode.length) finalCodeSeq.shift();
+        if (finalCodeSeq.join('') === unlockCode) {
+            finalPuzzleActive = false;
+            if (finalMusic.isPlaying) finalMusic.stop();
+            triggerFinalSequence();
+        }
+      }
+    });
+
+    // --- Game Logic Functions ---
+    function startSimonGame() {
+        puzzleTwoActive = true;
+        isSimonTurn = true;
+        simonSequence = [];
+        playerSequenceIndex = 0;
+        if (lightUpSfx.buffer && !lightUpSfx.isPlaying) lightUpSfx.play();
+        glyphsGroup.children.forEach(g => {
+            g.material.opacity = 1.0;
+            g.material.color.set(0xffffff);
+        });
+        setTimeout(startNextSimonRound, 1500);
+    }
+
+    function startNextSimonRound() {
+        isSimonTurn = true;
+        playerSequenceIndex = 0;
+        const glyphs = glyphsGroup.children;
+        const randomGlyph = glyphs[Math.floor(Math.random() * glyphs.length)];
+        simonSequence.push(randomGlyph);
+        playSimonSequence();
+    }
+
+    async function playSimonSequence() {
+        const delay = ms => new Promise(res => setTimeout(res, ms));
+        const sequenceSpeed = Math.max(150, 400 - (simonSequence.length * 20));
+        await delay(500);
+        for (const glyph of simonSequence) {
+            const originalColor = glyph.material.color.clone();
+            glyph.scale.set(1.5, 1.5, 1.5);
+            glyph.material.color.set(0x00ff00);
+            if(lightUpSfx.isPlaying) lightUpSfx.stop();
+            lightUpSfx.play();
+            await delay(sequenceSpeed);
+            glyph.scale.set(1, 1, 1);
+            glyph.material.color.copy(originalColor);
+            await delay(sequenceSpeed / 2);
+        }
+        isSimonTurn = false;
+    }
+    
+    function createRandomGlyphs() {
+        let texturesToPick = [...gGlyphTextures];
+        for (let i = texturesToPick.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [texturesToPick[i], texturesToPick[j]] = [texturesToPick[j], texturesToPick[i]];
+        }
+        for (let i = 0; i < 11; i++) {
+            const angle = (i / 11) * Math.PI * 2 + Math.random() * 0.5;
+            const randomRadius = radius + (Math.random() - 0.5) * 1.5;
+            const x = Math.cos(angle) * randomRadius;
+            const z = Math.sin(angle) * randomRadius;
+            const y = (Math.random() - 0.5) * 2.5;
+            const tex = texturesToPick[i];
+            const mat = new THREE.MeshBasicMaterial({ map: tex, color: 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+            const glyphMesh  = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.4), mat);
+            glyphMesh.position.set(x, y, z);
+            glyphMesh.lookAt(center);
+            glyphMesh.userData.label = `g${i + 1}`;
+            randomGlyphsGroup.add(glyphMesh);
+        }
+    }
+
+    function startFinalPuzzle() {
+        puzzleTwoActive = false;
+        finalPuzzleActive = true;
+        if (magicMusic.isPlaying) magicMusic.stop();
+        if (finalMusic.buffer) {
+            finalMusic.play();
+            finalMusic.setPlaybackRate(1.8);
+        }
+        createRandomGlyphs();
+        bookRotationVelocity = 4.0;
+        glyphsRotationVelocity = -2.5;
+    }
+    
+    function triggerFinalSequence() {
+        glyphsAccelerating = true;
+        if (breakSfx.buffer && !breakSfx.isPlaying) breakSfx.play();
+        goldPieces.forEach(piece => {
+            piece.userData.isFalling = true;
+            const force = piece.position.clone().normalize().multiplyScalar(1.5);
+            piece.userData.velocity = new THREE.Vector3(force.x+(Math.random()-0.5), 2+Math.random()*2, force.y+(Math.random()-0.5));
+            piece.userData.rotationalVelocity = new THREE.Vector3((Math.random()-0.5)*5, (Math.random()-0.5)*5, (Math.random()-0.5)*5);
+        });
+        const allGlyphs = [...glyphsGroup.children, ...randomGlyphsGroup.children];
+        allGlyphs.forEach(g => { g.visible = true; });
+        const worldPos = new THREE.Vector3();
+        allGlyphs.forEach(glyph => {
+            glyph.getWorldPosition(worldPos);
+            if (glyph.parent) glyph.parent.remove(glyph);
+            scene.add(glyph);
+            glyph.position.copy(worldPos);
+            glyph.userData.isFlying = true;
+            glyph.userData.velocity = new THREE.Vector3((Math.random()-0.5)*2, 4+Math.random()*2, (Math.random()-0.5)*2);
+            glyph.userData.rotationalVelocity = new THREE.Vector3((Math.random()-0.5)*3, (Math.random()-0.5)*3, (Math.random()-0.5)*3);
+            flyingGlyphs.push(glyph);
+        });
+        setTimeout(() => { bookLaunching = true; setTimeout(() => { fadeToWhiteActive = true; whiteoutSfx.play(); }, 400); }, 2000);
+    }
+
+    // --- Main Click Handler ---
+    function onGlyphClick(event) {
+      if (listener.context.state === 'suspended') listener.context.resume();
+      const mouse = new THREE.Vector2((event.clientX/window.innerWidth)*2-1, -(event.clientY/window.innerHeight)*2+1);
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(mouse, camera);
+      const hits = ray.intersectObjects(glyphsGroup.children);
+      if (hits.length > 0) {
+        const o = hits[0].object;
+
+        if (puzzleTwoActive && !isSimonTurn) {
+            const correctGlyph = simonSequence[playerSequenceIndex];
+            if (o === correctGlyph) {
+                playerSequenceIndex++;
+                if(lightUpSfx.isPlaying) lightUpSfx.stop();
+                lightUpSfx.play();
+                if (playerSequenceIndex >= simonSequence.length) {
+                    if (simonSequence.length >= SIMON_ROUNDS_TO_WIN) {
+                        startFinalPuzzle();
+                    } else {
+                        setTimeout(startNextSimonRound, 1000);
+                    }
+                }
+            } else {
+                if(breakSfx.isPlaying) breakSfx.stop();
+                breakSfx.play();
+                playerSequenceIndex = 0;
+                isSimonTurn = true;
+                setTimeout(() => playSimonSequence(), 1500);
+            }
+        } 
+        else if (o.userData.isClickableLight && magic && !puzzleTwoActive) {
+            const tempLight = new THREE.PointLight(0xfff0dd, 25, 30);
+            const lightPos = new THREE.Vector3();
+            o.getWorldPosition(lightPos);
+            tempLight.position.copy(lightPos);
+            scene.add(tempLight);
+            if (lightUpSfx.buffer) {
+                if(lightUpSfx.isPlaying) lightUpSfx.stop();
+                lightUpSfx.play();
+            }
+            setTimeout(() => scene.remove(tempLight), 2000);
+        }
+        else if (o.userData.isClickableLight && !magic) {
+           if (bgMusic.buffer && !bgMusic.isPlaying && !magicMusic.isPlaying) bgMusic.play();
+           const tempLight = new THREE.PointLight(0xfff0dd, 20, 30);
+           tempLight.position.copy(o.position);
+           bookGroup.add(tempLight);
+           lightUpSfx.play();
+           backTextMesh.visible = true;
+           setTimeout(() => bookGroup.remove(tempLight), 3000);
+        }
+      } else {
+        if (bgMusic.buffer && !bgMusic.isPlaying && !magicMusic.isPlaying) bgMusic.play();
+      }
+    }
+    window.addEventListener('click', onGlyphClick);
+
+    // Composer
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 1.5, 0.4, 0.85);
+    bloom.threshold = 0.2; bloom.strength = 0.5; bloom.radius = 0.3;
+    composer.addPass(bloom);
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+      controls.update();
+      if (musicFading) {
+        const fs = 0.4;
+        if (bgMusic.getVolume()>0) bgMusic.setVolume(bgMusic.getVolume()-(fs*delta)); else bgMusic.stop();
+        if (magicMusic.getVolume()<0.3) magicMusic.setVolume(magicMusic.getVolume()+(fs*delta)); else musicFading=false;
+      }
+      if (magic && !glyphsAccelerating) {
+        bookGroup.position.y = Math.sin(clock.getElapsedTime()*1.5)*0.1;
+        if (puzzleTwoActive) {
+            if (bookRotationVelocity < 2.5) bookRotationVelocity += 0.4 * delta;
+            if (magicMusic.buffer && magicMusic.isPlaying) {
+                const currentRate = magicMusic.getPlaybackRate();
+                if (currentRate < 1.5) magicMusic.setPlaybackRate(currentRate + 0.1 * delta);
+            }
+        }
+        bookGroup.rotation.y += bookRotationVelocity * delta;
+        glyphsGroup.rotation.y += glyphsRotationVelocity * delta;
+        randomGlyphsGroup.rotation.y += randomGlyphsRotationVelocity * delta;
+        if (!puzzleTwoActive && !finalPuzzleActive) {
+            glyphsGroup.children.forEach(g=>{ if(g.material.opacity<0.7) g.material.opacity += 0.005; g.position.y += Math.sin(clock.getElapsedTime()*2 + g.id)*0.001; });
+        }
+        if(finalPuzzleActive) {
+            randomGlyphsGroup.children.forEach(g => {
+                if (g.material.opacity < 0.7) g.material.opacity += 0.8 * delta;
+            });
+        }
+      }
+      
+      goldPieces.forEach(p => { 
+        if(p.userData.isFalling){ 
+          p.userData.velocity.add(gravity.clone().multiplyScalar(delta)); 
+          p.position.add(p.userData.velocity.clone().multiplyScalar(delta)); 
+          p.rotation.x += p.userData.rotationalVelocity.x*delta; 
+          p.rotation.y += p.userData.rotationalVelocity.y*delta; 
+          p.rotation.z += p.userData.rotationalVelocity.z*delta; 
+          if(p.position.y<-10){ p.userData.isFalling=false; p.visible=false;} 
+        }
+      });
+      
+      flyingGlyphs.forEach(g => { 
+        if(g.userData.isFlying){ 
+          g.userData.velocity.add(gravity.clone().multiplyScalar(delta)); 
+          g.position.add(g.userData.velocity.clone().multiplyScalar(delta)); 
+          g.rotation.x += g.userData.rotationalVelocity.x*delta; 
+          g.rotation.y += g.userData.rotationalVelocity.y*delta; 
+          g.rotation.z += g.userData.rotationalVelocity.z*delta; 
+          if(g.position.y< -10){ g.userData.isFlying=false; g.visible=false;} 
+        }
+      });
+
+      if (glyphsAccelerating) {
+        bookRotationVelocity+=2.0*delta;
+        glyphsRotationVelocity+=2.0*delta;
+      }
+      if (bookLaunching) bookGroup.position.y += 35*delta;
+      
+      if (fadeToWhiteActive) {
+        let op = parseFloat(whiteoutOverlay.style.opacity)||0; 
+        op = Math.min(op + delta * 0.8, 1); 
+        whiteoutOverlay.style.opacity = op;
+        
+        if (op >= 1 && !isFinaleTriggered) {
+          isFinaleTriggered = true;
+          finalQuote.style.opacity = 1;
+        }
+      }
+      composer.render();
+    }
+    animate();
+
+    window.addEventListener('resize',()=>{
+      camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); composer.setSize(innerWidth,innerHeight);
+    });
+</script>
+
+</body>
+</html>
